@@ -35,6 +35,9 @@ public class IntegrationDslApplication {
     @Autowired
     private SessionFactory<FTPFile> ftpSessionFactory;
 
+    @Autowired
+    private ApplicationService applicationService;
+
     public static void main(String[] args) {
         SpringApplication.run(IntegrationDslApplication.class, args);
     }
@@ -85,6 +88,7 @@ public class IntegrationDslApplication {
                         e -> e.id("sftpInboundAdapter")
                                 .autoStartup(true)
                                 .poller(Pollers.fixedDelay(5000)))
+                .handle(applicationService, "execute")
                 .log(message -> "\n\nTEST RESULTS (downloaded): \n" + message.getPayload())
                 .handle(Ftp.outboundAdapter(ftpSessionFactory, FileExistsMode.REPLACE)
                                 .autoCreateDirectory(true)

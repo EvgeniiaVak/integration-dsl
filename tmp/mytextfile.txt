@@ -1,2 +1,0 @@
-some lines 
-in text file
