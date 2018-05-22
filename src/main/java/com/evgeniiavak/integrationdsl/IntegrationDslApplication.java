@@ -13,13 +13,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.integration.dsl.IntegrationFlow;
 import org.springframework.integration.dsl.IntegrationFlows;
 import org.springframework.integration.dsl.core.Pollers;
-import org.springframework.integration.dsl.ftp.Ftp;
+import org.springframework.integration.dsl.sftp.Sftp;
+import org.springframework.integration.file.filters.RegexPatternFileListFilter;
 import org.springframework.integration.file.remote.session.CachingSessionFactory;
 import org.springframework.integration.file.remote.session.SessionFactory;
-import org.springframework.integration.file.support.FileExistsMode;
 import org.springframework.integration.ftp.session.DefaultFtpSessionFactory;
-import org.springframework.integration.metadata.SimpleMetadataStore;
-import org.springframework.integration.sftp.filters.SftpPersistentAcceptOnceFileListFilter;
 import org.springframework.integration.sftp.session.DefaultSftpSessionFactory;
 
 import java.io.File;
@@ -75,25 +73,27 @@ public class IntegrationDslApplication {
     }
 
     @Bean
-    public IntegrationFlow fromSftpToFtpFlow(@Value (value = "${sftp.directory:remote-dir}") String sftpDir,
-                                             @Value (value = "${ftp.directory:remote-dir}") String ftpDir) {
+    public IntegrationFlow orderItemFlow() {
+        return sftpFlow("",
+                "");
+    }
+
+    public IntegrationFlow sftpFlow(String from, String to, Object... services) {
         return IntegrationFlows
                 .from(s -> s.sftp(sftpSessionFactory)
                                 .preserveTimestamp(true)
-                                .remoteDirectory(sftpDir)
-                                .regexFilter(".*\\.txt$")
-                                .filter(new SftpPersistentAcceptOnceFileListFilter(new SimpleMetadataStore(), "sftp-message"))
-                                .autoCreateLocalDirectory(true)
-                                .localDirectory(new File("tmp")),
+                                .remoteDirectory(from)
+                                .regexFilter(".*\\.xml$")
+                                .localDirectory(new File("/tmp/temp-buffer"))
+                                .localFilter(new RegexPatternFileListFilter(".*\\.xml$"))
+                                .autoCreateLocalDirectory(true),
                         e -> e.id("sftpInboundAdapter")
                                 .autoStartup(true)
                                 .poller(Pollers.fixedDelay(5000)))
-                .handle(applicationService, "execute")
                 .log(message -> "\n\nTEST RESULTS (downloaded): \n" + message.getPayload())
-                .handle(Ftp.outboundAdapter(ftpSessionFactory, FileExistsMode.REPLACE)
-                                .autoCreateDirectory(true)
-                                .remoteDirectory(ftpDir))
+                .handle(Sftp.outboundAdapter(sftpSessionFactory)
+                        .autoCreateDirectory(true)
+                        .remoteDirectory(to))
                 .get();
     }
-
 }
