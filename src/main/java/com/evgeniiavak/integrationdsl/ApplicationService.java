@@ -15,4 +15,10 @@ public class ApplicationService {
         System.out.println("\n\n\nHandling file: " + file.getName());
         return file;
     }
+
+
+    public String execute(String file, Object... extraParams) {
+//        System.out.println("\n\n\nHandling string file: " + file);
+        return file;
+    }
 }

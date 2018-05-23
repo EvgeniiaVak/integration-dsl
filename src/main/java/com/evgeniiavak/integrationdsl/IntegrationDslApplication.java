@@ -3,8 +3,6 @@ package com.evgeniiavak.integrationdsl;
 import com.jcraft.jsch.ChannelSftp;
 import org.apache.commons.net.ftp.FTPClient;
 import org.apache.commons.net.ftp.FTPFile;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
@@ -14,18 +12,20 @@ import org.springframework.integration.dsl.IntegrationFlow;
 import org.springframework.integration.dsl.IntegrationFlows;
 import org.springframework.integration.dsl.core.Pollers;
 import org.springframework.integration.dsl.sftp.Sftp;
+import org.springframework.integration.dsl.support.Transformers;
+import org.springframework.integration.file.FileHeaders;
 import org.springframework.integration.file.filters.RegexPatternFileListFilter;
+import org.springframework.integration.file.remote.gateway.AbstractRemoteFileOutboundGateway;
 import org.springframework.integration.file.remote.session.CachingSessionFactory;
 import org.springframework.integration.file.remote.session.SessionFactory;
 import org.springframework.integration.ftp.session.DefaultFtpSessionFactory;
+import org.springframework.integration.handler.LoggingHandler;
 import org.springframework.integration.sftp.session.DefaultSftpSessionFactory;
 
 import java.io.File;
 
 @SpringBootApplication
 public class IntegrationDslApplication {
-
-    private Logger logger = LoggerFactory.getLogger(IntegrationDslApplication.class);
 
     @Autowired
     private SessionFactory<ChannelSftp.LsEntry> sftpSessionFactory;
@@ -73,27 +73,45 @@ public class IntegrationDslApplication {
     }
 
     @Bean
-    public IntegrationFlow orderItemFlow() {
-        return sftpFlow("",
-                "");
-    }
+    public IntegrationFlow sftpFlow(@Value("${sftp.path-in:/tmp/path/in/}") String from,
+                                    @Value("${sftp.path-out:/tmp/path/out/}") String to,
+                                    @Value("${tmp-path:/tmp/}") String tmpPath) {
 
-    public IntegrationFlow sftpFlow(String from, String to, Object... services) {
         return IntegrationFlows
                 .from(s -> s.sftp(sftpSessionFactory)
                                 .preserveTimestamp(true)
                                 .remoteDirectory(from)
                                 .regexFilter(".*\\.xml$")
-                                .localDirectory(new File("/tmp/temp-buffer"))
-                                .localFilter(new RegexPatternFileListFilter(".*\\.xml$"))
-                                .autoCreateLocalDirectory(true),
-                        e -> e.id("sftpInboundAdapter")
+                                .localDirectory(new File(tmpPath))
+                                .localFilter(new RegexPatternFileListFilter(".*\\.xml$")),
+                        e -> e
                                 .autoStartup(true)
-                                .poller(Pollers.fixedDelay(5000)))
+                                .poller(Pollers
+                                        .fixedDelay(5000)))
                 .log(message -> "\n\nTEST RESULTS (downloaded): \n" + message.getPayload())
-                .handle(Sftp.outboundAdapter(sftpSessionFactory)
-                        .autoCreateDirectory(true)
-                        .remoteDirectory(to))
+
+                //reading file
+                .transform(Transformers.fileToString())
+
+                //some business logic
+                .<String>handle((p, h) -> applicationService.execute(p, from))
+
+                //preparing for mv command
+                .enrichHeaders(h -> h.headerExpressions(
+                        m -> m.put(FileHeaders.RENAME_TO, "'" + to + "' + headers.file_name")
+                        .put(FileHeaders.REMOTE_FILE, "'" + from + "' + headers.file_name")
+                        .put(FileHeaders.REMOTE_DIRECTORY, "'" + from + "'")
+                ))
+
+                //the mv command
+                .handle(Sftp.outboundGateway(sftpSessionFactory, AbstractRemoteFileOutboundGateway.Command.MV, "'" + from + "' + headers.file_name"))
+
+                //get payload back to file in /tmp/
+                .transform("headers.file_originalFile")
+                .log(LoggingHandler.Level.INFO)
+                .transform(File::delete)
+                .log(LoggingHandler.Level.INFO)
+                .channel("nullChannel")
                 .get();
     }
 }
