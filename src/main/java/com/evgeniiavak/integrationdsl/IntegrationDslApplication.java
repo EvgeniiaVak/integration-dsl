@@ -114,7 +114,7 @@ public class IntegrationDslApplication {
                 .get();
     }
 
-    @Bean
+//    @Bean
     public IntegrationFlow generateFileFlow(@Value("${sftp.path-out:/tmp/path/out/}") String to,
                                             @Value("${generate-file-cron}") String cron) {
 
@@ -124,6 +124,21 @@ public class IntegrationDslApplication {
                         p -> p.poller(Pollers.cron(cron)))
                 .log(LoggingHandler.Level.INFO)
                 .handleWithAdapter(a -> a.sftp(sftpSessionFactory, FileExistsMode.REPLACE)
+                        .autoCreateDirectory(true)
+                        .fileNameGenerator(f->LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS")) + ".txt")
+                        .remoteDirectory(to))
+                .get();
+    }
+
+    @Bean
+    public IntegrationFlow generateMultipleFilesFlow(@Value("${sftp.path-out:/tmp/path/out/}") String to,
+                                                     @Value("${generate-file-cron}") String cron) {
+        return IntegrationFlows
+                .from(applicationService, "generateMultipleFilesContent",
+                        p -> p.poller(Pollers.cron(cron)))
+                .log(LoggingHandler.Level.INFO)
+                .split()
+                .handleWithAdapter(a -> a.sftp(sftpSessionFactory, FileExistsMode.FAIL)
                         .autoCreateDirectory(true)
                         .fileNameGenerator(f->LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS")) + ".txt")
                         .remoteDirectory(to))

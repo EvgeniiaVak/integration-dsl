@@ -3,6 +3,8 @@ package com.evgeniiavak.integrationdsl;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 public class ApplicationService {
@@ -18,6 +20,14 @@ public class ApplicationService {
 
     public String generateFileContent() {
         return "this file content: " + Math.random();
+    }
+
+    public List<String> generateMultipleFilesContent() {
+        List<String> result = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            result.add("this line content: " + Math.random());
+        }
+        return result;
     }
 
 
