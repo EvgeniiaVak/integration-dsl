@@ -18,11 +18,14 @@ import org.springframework.integration.file.filters.RegexPatternFileListFilter;
 import org.springframework.integration.file.remote.gateway.AbstractRemoteFileOutboundGateway;
 import org.springframework.integration.file.remote.session.CachingSessionFactory;
 import org.springframework.integration.file.remote.session.SessionFactory;
+import org.springframework.integration.file.support.FileExistsMode;
 import org.springframework.integration.ftp.session.DefaultFtpSessionFactory;
 import org.springframework.integration.handler.LoggingHandler;
 import org.springframework.integration.sftp.session.DefaultSftpSessionFactory;
 
 import java.io.File;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 @SpringBootApplication
 public class IntegrationDslApplication {
@@ -72,14 +75,13 @@ public class IntegrationDslApplication {
         return new CachingSessionFactory<>(factory);
     }
 
-    @Bean
+//    @Bean
     public IntegrationFlow sftpFlow(@Value("${sftp.path-in:/tmp/path/in/}") String from,
                                     @Value("${sftp.path-out:/tmp/path/out/}") String to,
                                     @Value("${tmp-path:/tmp/}") String tmpPath) {
 
         return IntegrationFlows
                 .from(s -> s.sftp(sftpSessionFactory)
-                                .preserveTimestamp(true)
                                 .remoteDirectory(from)
                                 .regexFilter(".*\\.xml$")
                                 .localDirectory(new File(tmpPath))
@@ -97,21 +99,34 @@ public class IntegrationDslApplication {
                 .<String>handle((p, h) -> applicationService.execute(p, from))
 
                 //preparing for mv command
-                .enrichHeaders(h -> h.headerExpressions(
-                        m -> m.put(FileHeaders.RENAME_TO, "'" + to + "' + headers.file_name")
+                .enrichHeaders(h -> h.headerExpressions(m -> m
+                        .put(FileHeaders.RENAME_TO, "'" + to + "' + headers.file_name")
                         .put(FileHeaders.REMOTE_FILE, "'" + from + "' + headers.file_name")
                         .put(FileHeaders.REMOTE_DIRECTORY, "'" + from + "'")
                 ))
-
                 //the mv command
-                .handle(Sftp.outboundGateway(sftpSessionFactory, AbstractRemoteFileOutboundGateway.Command.MV, "'" + from + "' + headers.file_name"))
-
-                //get payload back to file in /tmp/
+                .handle(Sftp.outboundGateway(sftpSessionFactory, AbstractRemoteFileOutboundGateway.Command.MV,
+                        "'" + from + "' + headers.file_name")
+                        .fileExistsMode(FileExistsMode.REPLACE))
+                //delete file from /tmp
                 .transform("headers.file_originalFile")
+                .transform(File::delete).channel("nullChannel")
+                .get();
+    }
+
+    @Bean
+    public IntegrationFlow generateFileFlow(@Value("${sftp.path-out:/tmp/path/out/}") String to,
+                                            @Value("${generate-file-cron}") String cron) {
+
+
+        return IntegrationFlows
+                .from(applicationService, "generateFileContent",
+                        p -> p.poller(Pollers.cron(cron)))
                 .log(LoggingHandler.Level.INFO)
-                .transform(File::delete)
-                .log(LoggingHandler.Level.INFO)
-                .channel("nullChannel")
+                .handleWithAdapter(a -> a.sftp(sftpSessionFactory, FileExistsMode.REPLACE)
+                        .autoCreateDirectory(true)
+                        .fileNameGenerator(f->LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS")) + ".txt")
+                        .remoteDirectory(to))
                 .get();
     }
 }

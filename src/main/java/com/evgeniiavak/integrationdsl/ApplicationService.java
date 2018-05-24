@@ -16,9 +16,13 @@ public class ApplicationService {
         return file;
     }
 
+    public String generateFileContent() {
+        return "this file content: " + Math.random();
+    }
+
 
     public String execute(String file, Object... extraParams) {
-//        System.out.println("\n\n\nHandling string file: " + file);
+        System.out.println("\n\n\nHandling string file: " + file);
         return file;
     }
 }
