@@ -22,11 +22,13 @@ import org.springframework.integration.file.support.FileExistsMode;
 import org.springframework.integration.ftp.session.DefaultFtpSessionFactory;
 import org.springframework.integration.handler.LoggingHandler;
 import org.springframework.integration.sftp.session.DefaultSftpSessionFactory;
+import org.springframework.scheduling.annotation.EnableAsync;
 
 import java.io.File;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
+@EnableAsync
 @SpringBootApplication
 public class IntegrationDslApplication {
 
@@ -75,10 +77,10 @@ public class IntegrationDslApplication {
         return new CachingSessionFactory<>(factory);
     }
 
-//    @Bean
+    @Bean
     public IntegrationFlow sftpFlow(@Value("${sftp.path-in:/tmp/path/in/}") String from,
-                                    @Value("${sftp.path-out:/tmp/path/out/}") String to,
-                                    @Value("${tmp-path:/tmp/}") String tmpPath) {
+                                    @Value("${sftp.path-out:/tmp/path/out/}") String to) {
+        String tmpPath = "tmp/" + from;
 
         return IntegrationFlows
                 .from(s -> s.sftp(sftpSessionFactory)
@@ -97,6 +99,7 @@ public class IntegrationDslApplication {
 
                 //some business logic
                 .<String>handle((p, h) -> applicationService.execute(p, from))
+                .<String>handle(applicationService, "executeAsync")
 
                 //preparing for mv command
                 .enrichHeaders(h -> h.headerExpressions(m -> m
@@ -104,11 +107,8 @@ public class IntegrationDslApplication {
                         .put(FileHeaders.REMOTE_FILE, "'" + from + "' + headers.file_name")
                         .put(FileHeaders.REMOTE_DIRECTORY, "'" + from + "'")
                 ))
-                //the mv command
                 .handle(Sftp.outboundGateway(sftpSessionFactory, AbstractRemoteFileOutboundGateway.Command.MV,
-                        "'" + from + "' + headers.file_name")
-                        .fileExistsMode(FileExistsMode.REPLACE))
-                //delete file from /tmp
+                        "'" + from + "' + headers.file_name"))
                 .transform("headers.file_originalFile")
                 .transform(File::delete).channel("nullChannel")
                 .get();
@@ -130,7 +130,7 @@ public class IntegrationDslApplication {
                 .get();
     }
 
-    @Bean
+//    @Bean
     public IntegrationFlow generateMultipleFilesFlow(@Value("${sftp.path-out:/tmp/path/out/}") String to,
                                                      @Value("${generate-file-cron}") String cron) {
         return IntegrationFlows

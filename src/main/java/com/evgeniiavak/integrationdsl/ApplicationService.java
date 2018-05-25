@@ -1,10 +1,13 @@
 package com.evgeniiavak.integrationdsl;
 
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.util.concurrent.SettableListenableFuture;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Future;
 
 @Service
 public class ApplicationService {
@@ -32,7 +35,21 @@ public class ApplicationService {
 
 
     public String execute(String file, Object... extraParams) {
-        System.out.println("\n\n\nHandling string file: " + file);
+        System.out.println("\n\n\nHandling string file: " + Thread.currentThread());
+
         return file;
+    }
+
+    @Async
+    public Future executeAsync(String file) {
+        System.out.println("\n\n\nThis is async method, file: " + Thread.currentThread());
+        try {
+            Thread.sleep(30000);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        System.out.println("\n\n\nThis is async method, file: " + Thread.currentThread());
+        System.out.println();
+        return new SettableListenableFuture();
     }
 }
